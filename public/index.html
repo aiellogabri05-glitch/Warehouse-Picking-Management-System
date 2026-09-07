@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <title>Picking App</title>
+
+  <link rel="stylesheet" href="/style.css" />
+</head>
+
+<body>
+
+  <div id="app"></div>
+
+  <!-- Nuova Task Modal -->
+  <div id="task-modal" class="modal hidden">
+
+    <div class="modal-content">
+
+      <div class="modal-header">
+        <div>
+          <span class="port-label">TASK MANAGEMENT</span>
+          <h2>Nuova Task</h2>
+        </div>
+
+        <button
+          class="close-button"
+          onclick="closeTaskModal()"
+        >
+          ×
+        </button>
+      </div>
+
+
+      <form id="task-form">
+
+        <!-- PORTA -->
+
+        <div class="form-group">
+
+          <label for="task-port">
+            Porta
+          </label>
+
+          <select
+            id="task-port"
+            required
+          >
+          </select>
+
+        </div>
+
+
+        <!-- TIPO ORDINE + TIPO OPERAZIONE -->
+
+        <div class="form-row">
+
+          <div class="form-group">
+
+            <label for="task-order-type">
+              Tipo ordine
+            </label>
+
+            <select
+              id="task-order-type"
+              required
+            >
+
+              <option value="">
+                Seleziona tipo ordine
+              </option>
+
+              <option value="B2B">
+                B2B
+              </option>
+
+              <option value="KOSICE">
+                Kosice
+              </option>
+
+              <option value="AMAZON_FBA">
+                Amazon FBA
+              </option>
+
+              <option value="OTHER">
+                Altro
+              </option>
+
+            </select>
+
+          </div>
+
+
+          <div class="form-group">
+
+            <label for="task-operation-type">
+              Tipo operazione
+            </label>
+
+            <select
+              id="task-operation-type"
+              required
+            >
+
+              <option value="">
+                Seleziona operazione
+              </option>
+
+              <option value="INSPECTION">
+                Inspection
+              </option>
+
+              <option value="SINGLE_PICK_LIST">
+                Single Pick List
+              </option>
+
+              <option value="GENERIC">
+                Generico
+              </option>
+
+            </select>
+
+          </div>
+
+        </div>
+
+
+        <!-- NUMERO ORDINE + CODICE ARTICOLO -->
+
+        <div class="form-row">
+
+          <div class="form-group">
+
+            <label for="task-order-number">
+              Numero ordine
+            </label>
+
+            <input
+              type="text"
+              id="task-order-number"
+              placeholder="Es. 4587"
+            />
+
+          </div>
+
+
+          <div class="form-group">
+
+            <label for="task-item-code">
+              Codice articolo
+            </label>
+
+            <input
+              type="text"
+              id="task-item-code"
+              placeholder="Es. SKU12345"
+            />
+
+          </div>
+
+        </div>
+
+
+        <!-- QUANTITÀ -->
+
+        <div class="form-group">
+
+          <label for="task-quantity">
+            Quantità
+          </label>
+
+          <input
+            type="number"
+            id="task-quantity"
+            min="1"
+            placeholder="Es. 10"
+          />
+
+        </div>
+
+
+        <!-- COSA DEVE ESSERE FATTO -->
+
+        <div class="form-group">
+
+          <label for="task-title">
+            Cosa deve essere fatto?
+          </label>
+
+          <input
+            type="text"
+            id="task-title"
+            placeholder="Es. Prelevare ordine #4587"
+            required
+          />
+
+        </div>
+
+
+        <!-- DESCRIZIONE -->
+
+        <div class="form-group">
+
+          <label for="task-description">
+            Descrizione / Note
+          </label>
+
+          <textarea
+            id="task-description"
+            rows="4"
+            placeholder="Inserisci eventuali dettagli..."
+          ></textarea>
+
+        </div>
+
+
+        <!-- URGENZA + TEMPO -->
+
+        <div class="form-row">
+
+          <div class="form-group">
+
+            <label for="task-priority">
+              Urgenza
+            </label>
+
+            <select
+              id="task-priority"
+              required
+            >
+
+              <option value="LOW">
+                Bassa
+              </option>
+
+              <option value="NORMAL" selected>
+                Normale
+              </option>
+
+              <option value="HIGH">
+                Alta
+              </option>
+
+              <option value="URGENT">
+                Urgente
+              </option>
+
+            </select>
+
+          </div>
+
+
+          <div class="form-group">
+
+            <label for="task-time">
+              Tempo previsto (minuti)
+            </label>
+
+            <input
+              type="number"
+              id="task-time"
+              min="1"
+              placeholder="15"
+              required
+            />
+
+          </div>
+
+        </div>
+
+
+        <!-- AZIONI -->
+
+        <div class="form-actions">
+
+          <button
+            type="button"
+            class="secondary-button"
+            onclick="closeTaskModal()"
+          >
+            Annulla
+          </button>
+
+          <button
+            type="submit"
+            class="primary-button"
+          >
+            CREA TASK
+          </button>
+
+        </div>
+
+      </form>
+
+    </div>
+
+  </div>
+
+
+  <script src="/app.js"></script>
+
+</body>
+</html>
