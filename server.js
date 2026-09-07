@@ -578,55 +578,60 @@ if (
     // CREATE TASK
     // ------------------------------------
 
-    const result = db
-      .prepare(`
-        INSERT INTO tasks (
-            port_id,
-            order_number,
-            item_code,
-            quantity,
-            title,
-            description,
-            priority,
-            status,
-            estimated_minutes,
-            order_type,
-            operation_type
-        )
-
-        VALUES (
-
-          ?,
-          ?,
-          ?,
-          ?,
-
-          ?,
-          ?,
-
-          ?,
-          ?,
-          ?,
-          'PENDING',
-
-          ?
-
-        )
-      `)
-      .run(
-        port.id,
-        order_number ? String(order_number).trim() : null,
-        item_code ? String(item_code).trim() : null,
-        quantity !== undefined && quantity !== null && quantity !== ""
-            ? Number(quantity)
-            : null,
-        title.trim(),
-        description ? description.trim() : null,
+    const result = db.prepare(`
+    INSERT INTO tasks (
+        port_id,
+        order_number,
+        item_code,
+        quantity,
+        title,
+        description,
         priority,
-        Number(estimated_minutes),
+        status,
+        estimated_minutes,
         order_type,
         operation_type
-    );
+    )
+    VALUES (
+        ?,
+        ?,
+        ?,
+        ?,
+        ?,
+        ?,
+        ?,
+        ?,
+        ?,
+        ?,
+        ?
+    )
+`).run(
+    port.id,
+    order_number ? String(order_number).trim() : null,
+    item_code ? String(item_code).trim() : null,
+
+    quantity !== undefined &&
+    quantity !== null &&
+    quantity !== ""
+        ? Number(quantity)
+        : null,
+
+    title.trim(),
+
+    description
+        ? description.trim()
+        : null,
+
+    priority,
+
+    "PENDING",
+
+    Number(estimated_minutes),
+
+    order_type,
+
+    operation_type
+);
 
 
     const task = db
@@ -733,32 +738,39 @@ app.post(
         // ----------------------------------------------------
 
         const taskResult = db.prepare(`
-          INSERT INTO tasks (
-            port_id,
-            order_number,
-            responsible,
-            title,
-            description,
-            priority,
-            status,
-            estimated_minutes,
-            order_type,
-            operation_type
-          )
-          VALUES (
-            ?, ?, ?, ?, ?, ?, 'PENDING', ?, ?, ?
-          )
-        `).run(
-          port.id,
-          parsedData.order_number,
-          parsedData.responsible || null,
-          `Amazon FBA ordine ${parsedData.order_number}`,
-          null,
-          "NORMAL",
-          0,
-          parsedData.order_type,
-          parsedData.operation_type
-        );
+  INSERT INTO tasks (
+      port_id,
+      order_number,
+      responsible,
+      title,
+      description,
+      priority,
+      status,
+      estimated_minutes,
+      order_type,
+      operation_type
+  )
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+`).run(
+  port.id,
+  String(order_number).trim(),
+  responsible
+    ? String(responsible).trim()
+    : null,
+  title
+    ? String(title).trim()
+    : `${operation_type} ordine ${order_number}`,
+  description
+    ? String(description).trim()
+    : null,
+  priority || "NORMAL",
+  "PENDING",
+  estimated_minutes
+    ? Number(estimated_minutes)
+    : 0,
+  order_type,
+  operation_type
+);
 
         const taskId = taskResult.lastInsertRowid;
 
@@ -1017,38 +1029,39 @@ app.post("/api/tasks/import", (req, res) => {
       // ------------------------------------------------------
 
      const taskResult = db.prepare(`
-        INSERT INTO tasks (
-            port_id,
-            order_number,
-            responsible,
-            title,
-            description,
-            priority,
-            status,
-            estimated_minutes,
-            order_type,
-            operation_type
-        )
-        VALUES (?, ?, ?, ?, ?, 'PENDING', ?, ?, ?)
-      `).run(
-        port.id,
-        String(order_number).trim(),
-        responsible
-            ? String(responsible).trim()
-            : null,
-        title
-            ? String(title).trim()
-            : `${operation_type} ordine ${order_number}`,
-        description
-          ? String(description).trim()
-          : null,
-        priority || "NORMAL",
-        estimated_minutes
-          ? Number(estimated_minutes)
-          : 0,
-        order_type,
-        operation_type
-      );
+  INSERT INTO tasks (
+      port_id,
+      order_number,
+      responsible,
+      title,
+      description,
+      priority,
+      status,
+      estimated_minutes,
+      order_type,
+      operation_type
+  )
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+`).run(
+  port.id,
+  String(order_number).trim(),
+  responsible
+    ? String(responsible).trim()
+    : null,
+  title
+    ? String(title).trim()
+    : `${operation_type} ordine ${order_number}`,
+  description
+    ? String(description).trim()
+    : null,
+  priority || "NORMAL",
+  "PENDING",
+  estimated_minutes
+    ? Number(estimated_minutes)
+    : 0,
+  order_type,
+  operation_type
+);
 
       const taskId = Number(taskResult.lastInsertRowid);
 
@@ -1292,6 +1305,377 @@ app.delete("/api/tasks/:id", (req, res) => {
   }
 });
 
+
+// ========================================
+// UPDATE ITEM STATUS
+// ========================================
+
+app.patch(
+  "/api/task-items/:id/status",
+  (req, res) => {
+
+    try {
+
+      const itemId = Number(req.params.id);
+
+      const {
+        status
+      } = req.body;
+
+
+      const allowedStatuses = [
+        "PENDING",
+        "COMPLETED"
+      ];
+
+
+      // --------------------------------------------------
+      // VALIDAZIONE
+      // --------------------------------------------------
+
+      if (!Number.isInteger(itemId)) {
+
+        return res.status(400).json({
+          error: "ID articolo non valido."
+        });
+
+      }
+
+
+      if (!allowedStatuses.includes(status)) {
+
+        return res.status(400).json({
+          error: "Stato articolo non valido."
+        });
+
+      }
+
+
+      // --------------------------------------------------
+      // TROVA ARTICOLO
+      // --------------------------------------------------
+
+      const item = db
+        .prepare(`
+          SELECT *
+          FROM task_items
+          WHERE id = ?
+        `)
+        .get(itemId);
+
+
+      if (!item) {
+
+        return res.status(404).json({
+          error: "Articolo non trovato."
+        });
+
+      }
+
+
+      // --------------------------------------------------
+      // 1. AGGIORNA ARTICOLO
+      // --------------------------------------------------
+
+      if (status === "COMPLETED") {
+
+        db.prepare(`
+          UPDATE task_items
+          SET
+            status = 'COMPLETED',
+            inspection_status = 'COMPLETED',
+            completed_at = CURRENT_TIMESTAMP,
+            updated_at = CURRENT_TIMESTAMP
+          WHERE id = ?
+        `).run(itemId);
+
+      } else {
+
+        db.prepare(`
+          UPDATE task_items
+          SET
+            status = 'PENDING',
+            inspection_status = 'PENDING',
+            completed_at = NULL,
+            updated_at = CURRENT_TIMESTAMP
+          WHERE id = ?
+        `).run(itemId);
+
+      }
+
+
+      // --------------------------------------------------
+      // 2. STATO OPERATORE
+      // --------------------------------------------------
+
+      if (item.task_operator_id) {
+
+        const operatorProgress = db
+          .prepare(`
+            SELECT
+              COUNT(*) AS total_items,
+              SUM(
+                CASE
+                  WHEN status = 'COMPLETED'
+                  THEN 1
+                  ELSE 0
+                END
+              ) AS completed_items
+            FROM task_items
+            WHERE task_operator_id = ?
+          `)
+          .get(item.task_operator_id);
+
+
+        const operatorTotal =
+          Number(
+            operatorProgress.total_items || 0
+          );
+
+
+        const operatorCompleted =
+          Number(
+            operatorProgress.completed_items || 0
+          );
+
+
+        // Tutti gli articoli dell'operatore completati
+
+        if (
+          operatorTotal > 0 &&
+          operatorCompleted === operatorTotal
+        ) {
+
+          db.prepare(`
+            UPDATE task_operators
+            SET
+              status = 'COMPLETED',
+              completed_at = CURRENT_TIMESTAMP,
+              updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+          `).run(item.task_operator_id);
+
+        } else {
+
+          // Se c'è almeno un articolo ancora da fare
+
+          db.prepare(`
+            UPDATE task_operators
+            SET
+              status = 'IN_PROGRESS',
+              completed_at = NULL,
+              updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+          `).run(item.task_operator_id);
+
+        }
+
+      }
+
+
+      // --------------------------------------------------
+      // 3. CONTROLLA TUTTI GLI ARTICOLI DELLA TASK
+      // --------------------------------------------------
+
+      const taskProgress = db
+        .prepare(`
+          SELECT
+            COUNT(*) AS total_items,
+
+            SUM(
+              CASE
+                WHEN status = 'COMPLETED'
+                THEN 1
+                ELSE 0
+              END
+            ) AS completed_items
+
+          FROM task_items
+
+          WHERE task_id = ?
+        `)
+        .get(item.task_id);
+
+
+      const totalItems =
+        Number(
+          taskProgress.total_items || 0
+        );
+
+
+      const completedItems =
+        Number(
+          taskProgress.completed_items || 0
+        );
+
+
+      const allItemsCompleted =
+        totalItems > 0 &&
+        completedItems === totalItems;
+
+
+      // --------------------------------------------------
+      // 4. SE TUTTI GLI ARTICOLI SONO COMPLETATI
+      //    COMPLETA TUTTI GLI OPERATORI
+      // --------------------------------------------------
+
+      if (allItemsCompleted) {
+
+        db.prepare(`
+          UPDATE task_operators
+          SET
+            status = 'COMPLETED',
+            completed_at = CURRENT_TIMESTAMP,
+            updated_at = CURRENT_TIMESTAMP
+          WHERE task_id = ?
+        `).run(item.task_id);
+
+
+        // ------------------------------------------------
+        // COMPLETA TUTTI GLI ARTICOLI DELL'INSPECTION
+        // ------------------------------------------------
+
+        db.prepare(`
+          UPDATE task_items
+          SET
+            inspection_status = 'COMPLETED',
+            updated_at = CURRENT_TIMESTAMP
+          WHERE task_id = ?
+        `).run(item.task_id);
+
+
+        // ------------------------------------------------
+        // COMPLETA TASK
+        // ------------------------------------------------
+
+        db.prepare(`
+          UPDATE tasks
+          SET
+            status = 'COMPLETED',
+            completed_at = CURRENT_TIMESTAMP,
+            updated_at = CURRENT_TIMESTAMP
+          WHERE id = ?
+        `).run(item.task_id);
+
+
+        console.log(
+          `Task ${item.task_id} completata automaticamente.`
+        );
+
+
+      } else {
+
+        // ------------------------------------------------
+        // SE NON È TUTTO COMPLETATO
+        // LA TASK DEVE ESSERE IN_PROGRESS
+        // ------------------------------------------------
+
+        db.prepare(`
+          UPDATE tasks
+          SET
+            status = 'IN_PROGRESS',
+            completed_at = NULL,
+            updated_at = CURRENT_TIMESTAMP
+          WHERE id = ?
+            AND status != 'PROBLEM'
+        `).run(item.task_id);
+
+      }
+
+
+      // --------------------------------------------------
+      // 5. RECUPERA ARTICOLO AGGIORNATO
+      // --------------------------------------------------
+
+      const updatedItem = db
+        .prepare(`
+          SELECT
+            ti.*,
+            toper.operator_name
+          FROM task_items ti
+          LEFT JOIN task_operators toper
+            ON toper.id = ti.task_operator_id
+          WHERE ti.id = ?
+        `)
+        .get(itemId);
+
+
+      // --------------------------------------------------
+      // 6. RECUPERA TASK AGGIORNATA
+      // --------------------------------------------------
+
+      const updatedTask = db
+        .prepare(`
+          SELECT
+            t.*,
+            p.number AS port_number,
+            p.name AS port_name
+          FROM tasks t
+          JOIN ports p
+            ON p.id = t.port_id
+          WHERE t.id = ?
+        `)
+        .get(item.task_id);
+
+
+      // --------------------------------------------------
+      // 7. REALTIME - ARTICOLO
+      // --------------------------------------------------
+
+      broadcast({
+        type: "TASK_ITEM_UPDATED",
+        item: updatedItem
+      });
+
+
+      // --------------------------------------------------
+      // 8. REALTIME - TASK
+      // --------------------------------------------------
+
+      broadcast({
+        type: "TASK_STATUS_UPDATED",
+        task: updatedTask
+      });
+
+
+      // --------------------------------------------------
+      // 9. RISPOSTA
+      // --------------------------------------------------
+
+      res.json({
+
+        success: true,
+
+        item: updatedItem,
+
+        task: updatedTask,
+
+        task_completed:
+          allItemsCompleted
+
+      });
+
+
+    } catch (error) {
+
+      console.error(
+        "Error updating item status:",
+        error
+      );
+
+
+      res.status(500).json({
+
+        error:
+          "Errore durante l'aggiornamento dell'articolo."
+
+      });
+
+    }
+
+  }
+);
+
 // ========================================
 // UPDATE TASK STATUS
 // ========================================
@@ -1302,8 +1686,7 @@ app.patch(
 
     try {
 
-      const taskId =
-        Number(req.params.id);
+      const taskId = Number(req.params.id);
 
       const {
         status
@@ -1311,15 +1694,20 @@ app.patch(
 
 
       const allowedStatuses = [
-
         "PENDING",
         "IN_PROGRESS",
-        "PROBLEM",
         "COMPLETED",
-        "BLOCKED",
         "CANCELLED"
-
       ];
+
+
+      if (!Number.isInteger(taskId)) {
+
+        return res.status(400).json({
+          error: "ID task non valido."
+        });
+
+      }
 
 
       if (!allowedStatuses.includes(status)) {
@@ -1330,6 +1718,8 @@ app.patch(
 
       }
 
+
+      // Trova il task
 
       const task = db
         .prepare(`
@@ -1343,110 +1733,54 @@ app.patch(
       if (!task) {
 
         return res.status(404).json({
-          error: "Task non trovata."
+          error: "Task non trovato."
         });
 
       }
 
 
-      if (status === "IN_PROGRESS") {
+      // Aggiorna stato
 
-        db.prepare(`
-          UPDATE tasks
-
-          SET
-
-            status = 'IN_PROGRESS',
-
-            started_at =
-              COALESCE(
-                started_at,
-                CURRENT_TIMESTAMP
-              ),
-
-            updated_at =
-              CURRENT_TIMESTAMP
-
-          WHERE id = ?
-        `)
-        .run(taskId);
-
-      }
+      db.prepare(`
+        UPDATE tasks
+        SET
+          status = ?,
+          updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+      `).run(
+        status,
+        taskId
+      );
 
 
-      else if (status === "COMPLETED") {
-
-        db.prepare(`
-          UPDATE tasks
-
-          SET
-
-            status = 'COMPLETED',
-
-            completed_at =
-              CURRENT_TIMESTAMP,
-
-            updated_at =
-              CURRENT_TIMESTAMP
-
-          WHERE id = ?
-        `)
-        .run(taskId);
-
-      }
-
-
-      else {
-
-        db.prepare(`
-          UPDATE tasks
-
-          SET
-
-            status = ?,
-
-            updated_at =
-              CURRENT_TIMESTAMP
-
-          WHERE id = ?
-        `)
-        .run(
-          status,
-          taskId
-        );
-
-      }
-
+      // Recupera task aggiornato
 
       const updatedTask = db
         .prepare(`
           SELECT
-
-            tasks.*,
-
-            ports.number AS port_number,
-            ports.name AS port_name
-
-          FROM tasks
-
-          INNER JOIN ports
-            ON tasks.port_id = ports.id
-
-          WHERE tasks.id = ?
+            t.*,
+            p.number AS port_number
+          FROM tasks t
+          JOIN ports p
+            ON p.id = t.port_id
+          WHERE t.id = ?
         `)
         .get(taskId);
 
 
+      // Notifica tutti i client collegati
+
       broadcast({
-
         type: "TASK_STATUS_UPDATED",
-
         task: updatedTask
-
       });
 
 
-      res.json(updatedTask);
+      res.json({
+        success: true,
+        task: updatedTask
+      });
+
 
     } catch (error) {
 
@@ -1455,16 +1789,16 @@ app.patch(
         error
       );
 
+
       res.status(500).json({
         error:
-          "Errore durante l'aggiornamento della task."
+          "Errore durante l'aggiornamento dello stato della task."
       });
 
     }
 
   }
 );
-
 
 // ========================================
 // REPORT PROBLEM
@@ -1748,10 +2082,6 @@ app.post(
 // RESOLVE PROBLEM
 // ========================================
 
-// ========================================
-// RESOLVE PROBLEM
-// ========================================
-
 app.post(
   "/api/tasks/:id/problem/resolve",
   (req, res) => {
@@ -1759,6 +2089,10 @@ app.post(
     try {
 
       const taskId = Number(req.params.id);
+
+      // ------------------------------------
+      // 1. TROVA TASK
+      // ------------------------------------
 
       const task = db
         .prepare(`
@@ -1776,6 +2110,7 @@ app.post(
 
       }
 
+
       if (task.status !== "PROBLEM") {
 
         return res.status(400).json({
@@ -1784,15 +2119,117 @@ app.post(
 
       }
 
+
+      // ------------------------------------
+      // 2. RISOLVE IL PROBLEMA
+      // ------------------------------------
+
       db.prepare(`
         UPDATE tasks
         SET
-          status = 'IN_PROGRESS',
           problem_status = 'RESOLVED',
           problem_resolved_at = CURRENT_TIMESTAMP,
           updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
       `).run(taskId);
+
+
+      // ------------------------------------
+      // 3. CONTROLLA GLI ARTICOLI
+      // ------------------------------------
+
+      const taskProgress = db
+        .prepare(`
+          SELECT
+            COUNT(*) AS total_items,
+            SUM(
+              CASE
+                WHEN status = 'COMPLETED'
+                THEN 1
+                ELSE 0
+              END
+            ) AS completed_items
+          FROM task_items
+          WHERE task_id = ?
+        `)
+        .get(taskId);
+
+
+      const totalItems =
+        Number(taskProgress.total_items || 0);
+
+      const completedItems =
+        Number(taskProgress.completed_items || 0);
+
+
+      const allItemsCompleted =
+        totalItems > 0 &&
+        completedItems === totalItems;
+
+
+      // ------------------------------------
+      // 4. AGGIORNA STATO TASK
+      // ------------------------------------
+
+      if (allItemsCompleted) {
+
+        // Tutti gli articoli erano già completati.
+        // La task può essere chiusa definitivamente.
+
+        db.prepare(`
+          UPDATE task_operators
+          SET
+            status = 'COMPLETED',
+            completed_at = CURRENT_TIMESTAMP,
+            updated_at = CURRENT_TIMESTAMP
+          WHERE task_id = ?
+        `).run(taskId);
+
+
+        db.prepare(`
+          UPDATE task_items
+          SET
+            inspection_status = 'COMPLETED',
+            updated_at = CURRENT_TIMESTAMP
+          WHERE task_id = ?
+        `).run(taskId);
+
+
+        db.prepare(`
+          UPDATE tasks
+          SET
+            status = 'COMPLETED',
+            completed_at = CURRENT_TIMESTAMP,
+            updated_at = CURRENT_TIMESTAMP
+          WHERE id = ?
+        `).run(taskId);
+
+
+        console.log(
+          `Task ${taskId} completata automaticamente dopo la risoluzione del problema.`
+        );
+
+
+      } else {
+
+        // Ci sono ancora articoli da completare.
+        // La task torna in lavorazione.
+
+        db.prepare(`
+          UPDATE tasks
+          SET
+            status = 'IN_PROGRESS',
+            completed_at = NULL,
+            updated_at = CURRENT_TIMESTAMP
+          WHERE id = ?
+        `).run(taskId);
+
+      }
+
+
+      // ------------------------------------
+      // 5. RECUPERA TASK AGGIORNATA
+      // ------------------------------------
 
       const updatedTask = db
         .prepare(`
@@ -1807,12 +2244,27 @@ app.post(
         `)
         .get(taskId);
 
+
+      // ------------------------------------
+      // 6. WEBSOCKET
+      // ------------------------------------
+
       broadcast({
         type: "TASK_STATUS_UPDATED",
         task: updatedTask
       });
 
-      res.json(updatedTask);
+
+      // ------------------------------------
+      // 7. RISPOSTA
+      // ------------------------------------
+
+      res.json({
+        success: true,
+        task: updatedTask,
+        task_completed: allItemsCompleted
+      });
+
 
     } catch (error) {
 
@@ -1820,6 +2272,7 @@ app.post(
         "Error resolving problem:",
         error
       );
+
 
       res.status(500).json({
         error:

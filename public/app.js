@@ -328,6 +328,7 @@ function renderDashboard() {
     </div>
 
   `;
+
 }
 
 
@@ -453,9 +454,10 @@ if (runningTask && runningTask.started_at) {
 
   return `
 
-    <article
+    <a
       class="port-card ${stateClass}"
-      onclick="openPort(${port.number})"
+      href="/port/${port.number}"
+      style="display: block; text-decoration: none; color: inherit; cursor: pointer;"
     >
 
       <div class="port-card-top">
@@ -549,10 +551,12 @@ if (runningTask && runningTask.started_at) {
 
       </div>
 
-    </article>
+    </a>
 
   `;
 }
+
+
 
 
 // ========================================
@@ -1301,238 +1305,626 @@ function closeTaskModal() {
   }
 }
 
+// ============================================================
+// PARSER INSPECTION DA EXCEL
+// Legge il blocco copiato dal foglio "Pronto all'uso"
+// ============================================================
+
+function parseInspectionPaste(rawText) {
+  if (!rawText || !rawText.trim()) {
+    throw new Error(
+      "Incolla i dati dell'Inspection da Excel."
+    );
+  }
+
+  const text = rawText
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .trim();
+
+  const lines = text
+    .split("\n")
+    .map(line => line.trim())
+    .filter(line => line.length > 0);
+
+  if (lines.length < 2) {
+    throw new Error(
+      "I dati incollati non sembrano contenere un'Inspection valida."
+    );
+  }
+
+  // ----------------------------------------------------------
+  // 1. CERCA OPERATORE
+  // ----------------------------------------------------------
+
+  let operatorName = null;
+
+  for (const line of lines) {
+    const cleanLine = line
+      .replace(/\|/g, " ")
+      .replace(/\t/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    const match = cleanLine.match(
+      /\b(OPERATORE\s+\d+)\b/i
+    );
+
+    if (match) {
+      operatorName = match[1].toUpperCase();
+      break;
+    }
+  }
+
+  if (!operatorName) {
+    throw new Error(
+      "Non riesco a riconoscere l'operatore. " +
+      "Assicurati di aver copiato anche la riga OPERATORE 1, 2 o 3."
+    );
+  }
+
+  // ----------------------------------------------------------
+  // 2. CERCA INTESTAZIONE COLONNE
+  // ----------------------------------------------------------
+
+  let headerIndex = -1;
+  let headers = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const normalized = lines[i]
+      .replace(/\|/g, "\t")
+      .split("\t")
+      .map(value => value.trim().toLowerCase());
+
+    if (
+      normalized.includes("product id") &&
+      normalized.includes("sku fba") &&
+      normalized.includes("qty to send")
+    ) {
+      headerIndex = i;
+      headers = normalized;
+      break;
+    }
+  }
+
+  if (headerIndex === -1) {
+    throw new Error(
+      "Non trovo l'intestazione dei prodotti. " +
+      "Copia le celle complete dell'operatore dal foglio Pronto all'uso."
+    );
+  }
+
+  // ----------------------------------------------------------
+  // 3. POSIZIONI DELLE COLONNE
+  // ----------------------------------------------------------
+
+  const columnIndex = name =>
+    headers.findIndex(
+      header => header === name.toLowerCase()
+    );
+
+  const fattoIndex =
+    columnIndex("fatto");
+
+  const productIdIndex =
+    columnIndex("product id");
+
+  const skuFbaIndex =
+    columnIndex("sku fba");
+
+  const piecesPerBoxIndex =
+    columnIndex("number of pieces per box");
+
+  const boxesIndex =
+    columnIndex("number of boxes");
+
+  const quantityIndex =
+    columnIndex("qty to send");
+
+  const noteIndex =
+    columnIndex("note");
+
+  const eanIndex =
+    columnIndex("ean");
+
+  const productNameIndex =
+    columnIndex("name of product");
+
+  // ----------------------------------------------------------
+  // 4. PARSE PRODOTTI
+  // ----------------------------------------------------------
+
+  const items = [];
+
+  for (
+    let i = headerIndex + 1;
+    i < lines.length;
+    i++
+  ) {
+    let values;
+
+    if (lines[i].includes("|")) {
+      values = lines[i]
+        .split("|")
+        .map(value => value.trim());
+
+      // Elimina eventuali celle vuote create dai bordi "|"
+      while (
+        values.length &&
+        values[0] === ""
+      ) {
+        values.shift();
+      }
+
+      while (
+        values.length &&
+        values[values.length - 1] === ""
+      ) {
+        values.pop();
+      }
+    } else {
+      values = lines[i]
+        .split("\t")
+        .map(value => value.trim());
+    }
+
+    if (!values.length) {
+      continue;
+    }
+
+    const rowText = values
+      .join(" ")
+      .trim();
+
+    // Ignora righe TOTALI
+    if (
+      rowText
+        .toUpperCase()
+        .includes("TOTALE")
+    ) {
+      continue;
+    }
+
+    const productId =
+      productIdIndex >= 0
+        ? values[productIdIndex]
+        : "";
+
+    const skuFba =
+      skuFbaIndex >= 0
+        ? values[skuFbaIndex]
+        : "";
+
+    const productName =
+      productNameIndex >= 0
+        ? values[productNameIndex]
+        : "";
+
+    const quantityRaw =
+      quantityIndex >= 0
+        ? values[quantityIndex]
+        : "";
+
+    // Una riga senza prodotto/SKU/nome non è un articolo
+    if (
+      !productId &&
+      !skuFba &&
+      !productName
+    ) {
+      continue;
+    }
+
+    const quantity =
+      quantityRaw !== ""
+        ? Number(
+            String(quantityRaw)
+              .replace(",", ".")
+          )
+        : null;
+
+    const piecesPerBoxRaw =
+      piecesPerBoxIndex >= 0
+        ? values[piecesPerBoxIndex]
+        : "";
+
+    const boxesRaw =
+      boxesIndex >= 0
+        ? values[boxesIndex]
+        : "";
+
+    items.push({
+      operator_name: operatorName,
+
+      product_id:
+        productId || null,
+
+      sku:
+        null,
+
+      sku_fba:
+        skuFba || null,
+
+      ean:
+        eanIndex >= 0
+          ? values[eanIndex] || null
+          : null,
+
+      product_name:
+        productName || null,
+
+      pieces_per_box:
+        piecesPerBoxRaw !== ""
+          ? Number(
+              String(piecesPerBoxRaw)
+                .replace(",", ".")
+            )
+          : null,
+
+      number_of_boxes:
+        boxesRaw !== ""
+          ? Number(
+              String(boxesRaw)
+                .replace(",", ".")
+            )
+          : null,
+
+      quantity:
+        Number.isFinite(quantity)
+          ? quantity
+          : null,
+
+      note:
+        noteIndex >= 0
+          ? values[noteIndex] || null
+          : null
+    });
+  }
+
+  if (items.length === 0) {
+    throw new Error(
+      "Non ho trovato nessun prodotto nei dati incollati."
+    );
+  }
+
+  return {
+    operatorName,
+    items
+  };
+}
 
 async function createTask(event) {
-
   event.preventDefault();
 
   const portNumber =
     Number(
-      document.getElementById("task-port").value
+      document.getElementById("task-port")?.value
     );
 
   const orderType =
-    document.getElementById("task-order-type").value;
+    document.getElementById(
+      "task-order-type"
+    )?.value;
 
   const operationType =
-    document.getElementById("task-operation-type").value;
+    document.getElementById(
+      "task-operation-type"
+    )?.value;
 
   const orderNumber =
-    document
-      .getElementById("task-order-number")
-      .value
-      .trim();
-
-  const itemCode =
-    document
-      .getElementById("task-item-code")
-      .value
-      .trim();
-
-  const quantityValue =
-    document
-      .getElementById("task-quantity")
-      .value;
-
-  const quantity =
-    quantityValue
-      ? Number(quantityValue)
-      : null;
-
-  const title =
-    document
-      .getElementById("task-title")
-      .value
-      .trim();
+    document.getElementById(
+      "task-order-number"
+    )?.value.trim();
 
   const description =
-    document
-      .getElementById("task-description")
-      .value
-      .trim();
+    document.getElementById(
+      "task-description"
+    )?.value.trim();
 
   const priority =
-    document
-      .getElementById("task-priority")
-      .value;
+    document.getElementById(
+      "task-priority"
+    )?.value || "NORMAL";
+
+  const estimatedMinutesInput =
+    document.getElementById(
+      "task-time"
+    )?.value;
 
   const estimatedMinutes =
-    Number(
-      document
-        .getElementById("task-time")
-        .value
-    );
+    estimatedMinutesInput
+      ? Number(estimatedMinutesInput)
+      : 0;
 
-
-  // ========================================
-  // VALIDAZIONE
-  // ========================================
+  // ----------------------------------------------------------
+  // VALIDAZIONE BASE
+  // ----------------------------------------------------------
 
   if (!portNumber) {
-
     alert("Seleziona una porta.");
-
     return;
   }
-
 
   if (!orderType) {
-
     alert("Seleziona il tipo di ordine.");
-
     return;
   }
-
 
   if (!operationType) {
-
     alert("Seleziona il tipo di operazione.");
-
     return;
   }
 
+  if (!orderNumber) {
+    alert("Inserisci il numero ordine.");
+    return;
+  }
+
+  // ----------------------------------------------------------
+  // AMAZON FBA
+  // ----------------------------------------------------------
 
   if (
     orderType === "AMAZON_FBA" &&
     operationType !== "INSPECTION"
   ) {
-
     alert(
       "Per gli ordini Amazon FBA è disponibile solo INSPECTION."
     );
-
     return;
   }
 
+  // ----------------------------------------------------------
+  // INSPECTION
+  // ----------------------------------------------------------
 
-  if (!title) {
+  let inspectionData = null;
 
-    alert(
-      "Inserisci cosa deve essere fatto."
-    );
+  if (operationType === "INSPECTION") {
+    const pasteElement =
+      document.getElementById(
+        "inspection-paste"
+      );
 
-    return;
+    const rawPaste =
+      pasteElement?.value || "";
+
+    try {
+      inspectionData =
+        parseInspectionPaste(rawPaste);
+    } catch (error) {
+      alert(error.message);
+      return;
+    }
   }
 
+  // ----------------------------------------------------------
+  // GENERIC / SINGLE PICK LIST
+  // ----------------------------------------------------------
 
-  if (
-    quantity !== null &&
-    (
-      !Number.isFinite(quantity) ||
-      quantity <= 0
-    )
-  ) {
+  let genericItemCode = null;
+  let genericQuantity = null;
+  let title = "";
 
-    alert(
-      "Inserisci una quantità valida."
-    );
+  if (operationType !== "INSPECTION") {
+    genericItemCode =
+      document.getElementById(
+        "task-item-code"
+      )?.value.trim() || null;
 
-    return;
+    const quantityValue =
+      document.getElementById(
+        "task-quantity"
+      )?.value;
+
+    genericQuantity =
+      quantityValue
+        ? Number(quantityValue)
+        : null;
+
+    title =
+      document.getElementById(
+        "task-title"
+      )?.value.trim();
+
+    if (!title) {
+      alert(
+        "Inserisci cosa deve essere fatto."
+      );
+      return;
+    }
+
+    if (
+      genericQuantity !== null &&
+      (
+        !Number.isFinite(genericQuantity) ||
+        genericQuantity <= 0
+      )
+    ) {
+      alert(
+        "Inserisci una quantità valida."
+      );
+      return;
+    }
+
+    if (
+      !estimatedMinutes ||
+      estimatedMinutes <= 0
+    ) {
+      alert(
+        "Inserisci un tempo previsto valido."
+      );
+      return;
+    }
   }
 
-
-  if (
-    !estimatedMinutes ||
-    estimatedMinutes <= 0
-  ) {
-
-    alert(
-      "Inserisci un tempo previsto valido."
-    );
-
-    return;
-  }
-
-
-  // ========================================
+  // ----------------------------------------------------------
   // BUTTON
-  // ========================================
+  // ----------------------------------------------------------
 
   const submitButton =
     document.querySelector(
       '#task-form button[type="submit"]'
     );
 
-
   if (submitButton) {
-
     submitButton.disabled = true;
-
     submitButton.textContent =
       "CREAZIONE...";
   }
 
-
-  // ========================================
-  // CREAZIONE TASK
-  // ========================================
+  // ----------------------------------------------------------
+  // CREA TASK
+  // ----------------------------------------------------------
 
   try {
+    // ========================================================
+    // INSPECTION
+    // ========================================================
 
-    const response =
-      await fetch(
-        "/api/tasks",
-        {
-          method: "POST",
+    if (
+      operationType === "INSPECTION"
+    ) {
+      const operatorName =
+        inspectionData.operatorName;
 
-          headers: {
-            "Content-Type": "application/json"
-          },
+      const items =
+        inspectionData.items;
 
-          body: JSON.stringify({
+      const response =
+        await fetch(
+          "/api/tasks/import",
+          {
+            method: "POST",
 
-            port_number:
-              portNumber,
+            headers: {
+              "Content-Type":
+                "application/json"
+            },
 
-            order_type:
-              orderType,
+            body: JSON.stringify({
+              port_number:
+                portNumber,
 
-            operation_type:
-              operationType,
+              order_number:
+                orderNumber,
 
-            order_number:
-              orderNumber || null,
+              order_type:
+                orderType,
 
-            item_code:
-              itemCode || null,
+              operation_type:
+                operationType,
 
-            quantity:
-              quantity,
+              title:
+                `${orderType} ordine ${orderNumber}`,
 
-            title:
-              title,
+              description:
+                description || null,
 
-            description:
-              description || null,
+              priority:
+                priority,
 
-            priority:
-              priority,
+              estimated_minutes:
+                estimatedMinutes || 0,
 
-            estimated_minutes:
-              estimatedMinutes
+              operators: [
+                operatorName
+              ],
 
-          })
-        }
-      );
+              items:
+                items
+            })
+          }
+        );
 
+      const data =
+        await response.json();
 
-    const data =
-      await response.json();
+      if (!response.ok) {
+        throw new Error(
+          data.error ||
+          "Errore durante la creazione dell'Inspection."
+        );
+      }
 
-
-    if (!response.ok) {
-
-      throw new Error(
-        data.error ||
-        "Errore durante la creazione della task."
+      console.log(
+        "Inspection creata:",
+        data
       );
     }
 
+    // ========================================================
+    // GENERIC / SINGLE PICK LIST
+    // ========================================================
+
+    else {
+      const response =
+        await fetch(
+          "/api/tasks",
+          {
+            method: "POST",
+
+            headers: {
+              "Content-Type":
+                "application/json"
+            },
+
+            body: JSON.stringify({
+              port_number:
+                portNumber,
+
+              order_number:
+                orderNumber,
+
+              item_code:
+                genericItemCode,
+
+              quantity:
+                genericQuantity,
+
+              title:
+                title,
+
+              description:
+                description || null,
+
+              priority:
+                priority,
+
+              estimated_minutes:
+                estimatedMinutes,
+
+              order_type:
+                orderType,
+
+              operation_type:
+                operationType
+            })
+          }
+        );
+
+      const data =
+        await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data.error ||
+          "Errore durante la creazione della task."
+        );
+      }
+
+      console.log(
+        "Task creata:",
+        data
+      );
+    }
+
+    // --------------------------------------------------------
+    // SUCCESSO
+    // --------------------------------------------------------
 
     closeTaskModal();
 
     await loadDashboard();
-
 
   } catch (error) {
 
@@ -1541,15 +1933,15 @@ async function createTask(event) {
       error
     );
 
-    alert(error.message);
-
+    alert(
+      error.message ||
+      "Errore durante la creazione della task."
+    );
 
   } finally {
 
     if (submitButton) {
-
       submitButton.disabled = false;
-
       submitButton.textContent =
         "CREA TASK";
     }
@@ -1585,6 +1977,44 @@ const orderTypeSelect =
 const operationTypeSelect =
   document.getElementById("task-operation-type");
 
+const inspectionPasteSection =
+  document.getElementById("inspection-paste-section");
+
+const genericItemFields =
+  document.getElementById("generic-item-fields");
+
+
+function updateOperationFields() {
+
+  if (!operationTypeSelect) {
+    return;
+  }
+
+  const isInspection =
+    operationTypeSelect.value === "INSPECTION";
+
+
+  if (inspectionPasteSection) {
+
+    inspectionPasteSection.classList.toggle(
+      "hidden",
+      !isInspection
+    );
+
+  }
+
+
+  if (genericItemFields) {
+
+    genericItemFields.classList.toggle(
+      "hidden",
+      isInspection
+    );
+
+  }
+
+}
+
 
 if (
   orderTypeSelect &&
@@ -1609,10 +2039,22 @@ if (
 
         operationTypeSelect.disabled =
           false;
+
       }
+
+      updateOperationFields();
 
     }
   );
+
+
+  operationTypeSelect.addEventListener(
+    "change",
+    updateOperationFields
+  );
+
+
+  updateOperationFields();
 
 }
 
@@ -1966,52 +2408,11 @@ function updateTimers() {
       .join(",");
 
 
-  const runningPortNumbers =
-    ports
-      .filter(port => {
-
-        const task =
-          tasks.find(item =>
-            item.port_number === port.number &&
-            item.status === "IN_PROGRESS"
-          );
-
-        return !!task;
-
-      })
-      .map(port => port.number)
-      .sort()
-      .join(",");
-
-
-  const renderedRunningPortNumbers =
-    Array.from(
-      document.querySelectorAll(
-        ".port-card"
-      )
-    )
-      .filter(card =>
-        card.querySelector(".port-timer")
-      )
-      .map(card =>
-        Number(
-          card.querySelector(
-            ".port-main-number"
-          )?.textContent
-        )
-      )
-      .filter(Boolean)
-      .sort()
-      .join(",");
-
-
-  if (
-    currentOverduePorts !== renderedOverduePorts ||
-    runningPortNumbers !== renderedRunningPortNumbers
+    if (
+    currentOverduePorts !== renderedOverduePorts
   ) {
 
     renderDashboard();
-
 
     setTimeout(
       updateTimers,
@@ -2019,7 +2420,6 @@ function updateTimers() {
     );
 
   }
-
 }
 
 
@@ -2072,21 +2472,15 @@ function connectWebSocket() {
 
 
       if (
-
         data.type === "TASK_CREATED" ||
-
+        data.type === "TASK_IMPORTED" ||
         data.type === "TASK_STATUS_UPDATED" ||
-
-        data.type === "TASK_PROBLEM" ||
-
+        data.type === "TASK_PROBLEM_UPDATED" ||
         data.type === "TASK_PROBLEM_TAKEN" ||
-
-        data.type === "TASK_PROBLEM_RESOLVED"
-
+        data.type === "TASK_PROBLEM_RESOLVED" ||
+        data.type === "TASK_ITEM_UPDATED"
       ) {
-
         loadDashboard();
-
       }
 
 
@@ -2517,3 +2911,8 @@ function openAmazonImportModal() {
   );
 
 }
+
+// ========================================
+// OPEN PORT
+// ========================================
+

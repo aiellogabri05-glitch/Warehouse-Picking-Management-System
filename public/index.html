@@ -128,22 +128,66 @@
 
         <!-- NUMERO ORDINE + CODICE ARTICOLO -->
 
-        <div class="form-row">
+        <!-- NUMERO ORDINE -->
 
-          <div class="form-group">
+        <div class="form-group">
 
-            <label for="task-order-number">
-              Numero ordine
-            </label>
+          <label for="task-order-number">
+            Numero ordine
+          </label>
 
-            <input
-              type="text"
-              id="task-order-number"
-              placeholder="Es. 4587"
-            />
+          <input
+            type="text"
+            id="task-order-number"
+            placeholder="Es. 40002297406"
+          />
 
-          </div>
+        </div>
 
+
+        <!-- DATI INSPECTION DA EXCEL -->
+
+        <div
+          id="inspection-paste-section"
+          class="form-group hidden"
+        >
+
+          <label for="inspection-paste">
+            📋 Incolla dati Inspection da Excel
+          </label>
+
+          <p style="
+            margin: 6px 0 10px;
+            font-size: 13px;
+            opacity: 0.7;
+          ">
+            Copia direttamente le celle dell'operatore dal foglio
+            <strong>Pronto all'uso</strong> e incollale qui.
+          </p>
+
+          <textarea
+            id="inspection-paste"
+            rows="12"
+            placeholder="Incolla qui le celle copiate da Excel..."
+          ></textarea>
+
+          <div
+            id="inspection-preview"
+            style="
+              margin-top: 12px;
+              font-size: 14px;
+            "
+          ></div>
+
+        </div>
+
+
+        <!-- CODICE ARTICOLO + QUANTITÀ -->
+
+        <div
+          id="generic-item-fields"
+          class="form-row"
+        >
 
           <div class="form-group">
 
@@ -159,23 +203,21 @@
 
           </div>
 
-        </div>
 
+          <div class="form-group">
 
-        <!-- QUANTITÀ -->
+            <label for="task-quantity">
+              Quantità
+            </label>
 
-        <div class="form-group">
+            <input
+              type="number"
+              id="task-quantity"
+              min="1"
+              placeholder="Es. 10"
+            />
 
-          <label for="task-quantity">
-            Quantità
-          </label>
-
-          <input
-            type="number"
-            id="task-quantity"
-            min="1"
-            placeholder="Es. 10"
-          />
+          </div>
 
         </div>
 

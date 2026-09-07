@@ -150,12 +150,29 @@ async function loadTasks() {
 
 function renderTasks() {
 
-  if (!currentTasks || currentTasks.length === 0) {
+  // Mostra sulla porta solo le task ancora operative.
+  // Le task COMPLETED rimangono nel database
+  // e saranno visibili successivamente nel Manager.
+
+  const activeTasks =
+    currentTasks.filter(
+      task =>
+        task.status !== "COMPLETED" &&
+        task.status !== "CANCELLED"
+    );
+
+
+  if (activeTasks.length === 0) {
 
     tasksContainer.innerHTML = `
       <div class="empty-box">
-        <h2>Nessuna task</h2>
-        <p>Non ci sono attività assegnate a questa porta.</p>
+
+        <h2>Nessuna task attiva</h2>
+
+        <p>
+          Tutte le attività di questa porta sono state completate.
+        </p>
+
       </div>
     `;
 
@@ -164,28 +181,33 @@ function renderTasks() {
 
 
   tasksContainer.innerHTML =
-    currentTasks
+    activeTasks
       .map(task => renderTask(task))
       .join("");
 }
 
 // ============================================================
-// RENDER SINGLE TASK
+// RENDER SINGLE TASK - OPERATOR UI
 // ============================================================
 
 function renderTask(task) {
 
-  const operators = Array.isArray(task.operators)
-    ? task.operators
-    : [];
+  const operators =
+    Array.isArray(task.operators)
+      ? task.operators
+      : [];
 
-  const items = Array.isArray(task.items)
-    ? task.items
-    : [];
+  const items =
+    Array.isArray(task.items)
+      ? task.items
+      : [];
 
 
   const completedItems =
-    items.filter(item => item.status === "COMPLETED").length;
+    items.filter(
+      item => item.status === "COMPLETED"
+    ).length;
+
 
   const totalItems =
     items.length;
@@ -199,101 +221,123 @@ function renderTask(task) {
       : 0;
 
 
+  const operatorNames =
+    operators
+      .map(
+        operator =>
+          operator.operator_name
+      )
+      .filter(Boolean);
+
+
+  const operatorText =
+    operatorNames.length > 0
+      ? operatorNames.join(", ")
+      : "Non assegnato";
+
+
+  let statusClass =
+    "task-status-pending";
+
+  if (task.status === "IN_PROGRESS") {
+    statusClass = "task-status-progress";
+  }
+
+  if (task.status === "COMPLETED") {
+    statusClass = "task-status-completed";
+  }
+
+  if (task.status === "BLOCKED") {
+    statusClass = "task-status-blocked";
+  }
+
+  if (task.status === "CANCELLED") {
+    statusClass = "task-status-cancelled";
+  }
+
+
   return `
-    <div
-      class="task-card ${getStatusClass(task.status)}"
+
+    <article
+      class="operator-task-card"
       data-task-id="${task.id}"
     >
 
-      <!-- ================================================= -->
-      <!-- HEADER -->
-      <!-- ================================================= -->
+      <!-- HEADER ORDINE -->
 
-      <div class="task-header">
+      <div class="operator-task-header">
 
-        <div>
+        <div class="operator-task-header-left">
 
-          <div class="task-title">
+          <div class="operator-task-label">
+            ORDINE
+          </div>
+
+          <div class="operator-order-number">
             ${escapeHtml(
-              task.order_number
-                ? `Ordine ${task.order_number}`
-                : task.title
+              task.order_number ||
+              task.title ||
+              "-"
             )}
           </div>
 
-          <div class="task-subtitle">
-            Task #${task.id}
-          </div>
-
-        </div>
-
-
-        <div class="task-status">
-          ${escapeHtml(
-            formatStatus(task.status)
-          )}
-        </div>
-
-      </div>
-
-
-      <!-- ================================================= -->
-      <!-- INFO ORDINE -->
-      <!-- ================================================= -->
-
-      <div class="order-info">
-
-        <div class="info-box">
-
-          <span class="info-label">
-            Tipo ordine
-          </span>
-
-          <strong>
+          <div class="operator-order-type">
             ${escapeHtml(
-              formatOrderType(task.order_type)
+              formatOrderType(
+                task.order_type
+              )
             )}
-          </strong>
 
-        </div>
+            <span class="separator">
+              ·
+            </span>
 
-
-        <div class="info-box">
-
-          <span class="info-label">
-            Operazione
-          </span>
-
-          <strong>
             ${escapeHtml(
               formatOperationType(
                 task.operation_type
               )
             )}
-          </strong>
+          </div>
 
         </div>
 
 
-        <div class="info-box">
+        <div class="operator-task-header-right">
 
-          <span class="info-label">
-            Responsabile
+          <div class="${statusClass}">
+            ${escapeHtml(
+              formatStatus(task.status)
+            )}
+          </div>
+
+        </div>
+
+      </div>
+
+
+      <!-- INFO OPERATORE -->
+
+      <div class="operator-task-meta">
+
+        <div class="operator-meta-item">
+
+          <span class="meta-label">
+            OPERATORE
           </span>
 
           <strong>
             ${escapeHtml(
-              task.responsible || "-"
+              operatorText
             )}
           </strong>
 
         </div>
 
 
-        <div class="info-box">
+        <div class="operator-meta-item">
 
-          <span class="info-label">
-            Priorità
+          <span class="meta-label">
+            PRIORITÀ
           </span>
 
           <strong>
@@ -304,183 +348,135 @@ function renderTask(task) {
 
         </div>
 
-      </div>
-
-
-      <!-- ================================================= -->
-      <!-- OPERATORI -->
-      <!-- ================================================= -->
-
-      <div class="operators-section">
-
-        <div class="section-title">
-          👷 Operatori assegnati
-        </div>
-
 
         ${
-          operators.length === 0
-
+          task.responsible
             ? `
-              <div class="no-data">
-                Nessun operatore assegnato.
-              </div>
-            `
+              <div class="operator-meta-item">
 
-            : `
-              <div class="operators-list">
+                <span class="meta-label">
+                  RESPONSABILE
+                </span>
 
-                ${
-                  operators
-                    .map(operator => `
-                      <div class="operator-badge">
-
-                        <span>
-                          ${escapeHtml(
-                            operator.operator_name
-                          )}
-                        </span>
-
-                        <span class="operator-status">
-                          ${escapeHtml(
-                            formatStatus(
-                              operator.status
-                            )
-                          )}
-                        </span>
-
-                      </div>
-                    `)
-                    .join("")
-                }
+                <strong>
+                  ${escapeHtml(
+                    task.responsible
+                  )}
+                </strong>
 
               </div>
             `
+            : ""
         }
 
       </div>
 
 
-      <!-- ================================================= -->
-      <!-- PROGRESS -->
-      <!-- ================================================= -->
+      <!-- PROGRESSO -->
 
       ${
         totalItems > 0
-
           ? `
-            <div class="progress-section">
 
-              <div class="progress-header">
+            <div class="operator-progress-section">
 
-                <span>
-                  Progresso articoli
-                </span>
+              <div class="operator-progress-top">
 
-                <strong>
-                  ${completedItems} / ${totalItems}
+                <div>
+
+                  <span class="progress-label">
+                    PROGRESSO
+                  </span>
+
+                  <strong class="progress-count">
+                    ${completedItems} / ${totalItems}
+                  </strong>
+
+                </div>
+
+
+                <strong class="progress-percentage">
+                  ${progressPercentage}%
                 </strong>
 
               </div>
 
 
-              <div class="progress-bar">
+              <div class="operator-progress-bar">
 
                 <div
-                  class="progress-fill"
+                  class="operator-progress-fill"
                   style="width: ${progressPercentage}%"
                 ></div>
 
               </div>
 
             </div>
-          `
 
+          `
           : ""
       }
 
 
-      <!-- ================================================= -->
       <!-- ARTICOLI -->
-      <!-- ================================================= -->
 
-      <div class="items-section">
+      <div class="operator-items-section">
 
-        <div class="section-title">
-          📦 Articoli
+        <div class="operator-section-header">
+
+          <div>
+            ARTICOLI
+          </div>
+
+          <div class="operator-items-count">
+            ${totalItems}
+          </div>
+
         </div>
 
 
-        ${
-          items.length === 0
+        <div class="operator-items-list">
 
-            ? `
-              <div class="no-data">
-                Nessun articolo presente.
-              </div>
-            `
-
-            : `
-              <div class="items-list">
-
-                ${
-                  items
-                    .map((item, index) =>
+          ${
+            items.length === 0
+              ? `
+                <div class="operator-empty">
+                  Nessun articolo presente.
+                </div>
+              `
+              : items
+                  .map(
+                    (item, index) =>
                       renderItem(
                         item,
                         index + 1
                       )
-                    )
-                    .join("")
-                }
+                  )
+                  .join("")
+          }
 
-              </div>
-            `
-        }
+        </div>
 
       </div>
 
 
-      <!-- ================================================= -->
-      <!-- AZIONI TASK -->
-      <!-- ================================================= -->
+      <!-- AZIONI -->
 
-      <div class="task-actions">
+      <div class="operator-task-actions">
 
         ${
           task.status === "PENDING"
-
             ? `
               <button
-                class="btn btn-primary"
+                class="operator-start-button"
                 onclick="changeTaskStatus(
                   ${task.id},
                   'IN_PROGRESS'
                 )"
               >
-                ▶ Inizia
+                INIZIA LAVORAZIONE
               </button>
             `
-
-            : ""
-        }
-
-
-        ${
-          task.status === "IN_PROGRESS"
-
-            ? `
-              <button
-                class="btn btn-success"
-                onclick="changeTaskStatus(
-                  ${task.id},
-                  'COMPLETED'
-                )"
-              >
-                ✓ Completa task
-              </button>
-            `
-
             : ""
         }
 
@@ -488,32 +484,34 @@ function renderTask(task) {
         ${
           task.status !== "COMPLETED" &&
           task.status !== "CANCELLED"
-
             ? `
               <button
-                class="btn btn-warning"
+                class="operator-problem-button"
                 onclick="reportProblem(
                   ${task.id}
                 )"
               >
-                ⚠ Segnala problema
+                SEGNALA PROBLEMA
               </button>
             `
-
             : ""
         }
 
       </div>
 
-    </div>
+    </article>
+
   `;
 }
 
 // ============================================================
-// RENDER ITEM
+// RENDER ITEM - CLEAN INSPECTION LIST
 // ============================================================
 
 function renderItem(item, index) {
+
+  const isCompleted =
+    item.status === "COMPLETED";
 
   const operatorName =
     item.operator_name || "-";
@@ -521,80 +519,61 @@ function renderItem(item, index) {
 
   return `
     <div
-      class="item-card ${getItemStatusClass(
-        item.status
-      )}"
+      class="
+        inspection-item
+        ${isCompleted
+          ? "inspection-item-completed"
+          : "inspection-item-pending"}
+      "
     >
 
-      <div class="item-number">
-        ${index}
+      <!-- NUMERO -->
+
+      <div class="inspection-number">
+        ${String(index).padStart(2, "0")}
       </div>
 
 
-      <div class="item-main">
+      <!-- PRODOTTO -->
 
-        <div class="item-name">
+      <div class="inspection-product">
 
-          ${
-            escapeHtml(
-              item.product_name ||
-              item.product_id ||
-              "Articolo senza nome"
-            )
-          }
-
+        <div class="inspection-product-name">
+          ${escapeHtml(
+            item.product_name ||
+            item.product_id ||
+            "Articolo senza nome"
+          )}
         </div>
 
 
-        <div class="item-details">
-
-          ${
-            item.product_id
-              ? `
-                <span>
-                  Product ID:
-                  <strong>
-                    ${escapeHtml(
-                      item.product_id
-                    )}
-                  </strong>
-                </span>
-              `
-              : ""
-          }
-
-
-          ${
-            item.sku
-              ? `
-                <span>
-                  SKU:
-                  <strong>
-                    ${escapeHtml(
-                      item.sku
-                    )}
-                  </strong>
-                </span>
-              `
-              : ""
-          }
-
+        <div class="inspection-product-details">
 
           ${
             item.sku_fba
               ? `
                 <span>
-                  SKU FBA:
+                  SKU:
                   <strong>
-                    ${escapeHtml(
-                      item.sku_fba
-                    )}
+                    ${escapeHtml(item.sku_fba)}
                   </strong>
                 </span>
               `
               : ""
           }
 
+          ${
+            item.product_id
+              ? `
+                <span>
+                  ID:
+                  <strong>
+                    ${escapeHtml(item.product_id)}
+                  </strong>
+                </span>
+              `
+              : ""
+          }
 
           ${
             item.ean
@@ -602,9 +581,7 @@ function renderItem(item, index) {
                 <span>
                   EAN:
                   <strong>
-                    ${escapeHtml(
-                      item.ean
-                    )}
+                    ${escapeHtml(item.ean)}
                   </strong>
                 </span>
               `
@@ -612,131 +589,104 @@ function renderItem(item, index) {
           }
 
         </div>
-
-
-        <div class="item-details">
-
-          ${
-            item.quantity !== null &&
-            item.quantity !== undefined
-
-              ? `
-                <span>
-                  Quantità:
-                  <strong>
-                    ${escapeHtml(
-                      item.quantity
-                    )}
-                  </strong>
-                </span>
-              `
-
-              : ""
-          }
-
-
-          ${
-            item.number_of_boxes !== null &&
-            item.number_of_boxes !== undefined
-
-              ? `
-                <span>
-                  Colli:
-                  <strong>
-                    ${escapeHtml(
-                      item.number_of_boxes
-                    )}
-                  </strong>
-                </span>
-              `
-
-              : ""
-          }
-
-
-          ${
-            item.pieces_per_box !== null &&
-            item.pieces_per_box !== undefined
-
-              ? `
-                <span>
-                  Pezzi/box:
-                  <strong>
-                    ${escapeHtml(
-                      item.pieces_per_box
-                    )}
-                  </strong>
-                </span>
-              `
-
-              : ""
-          }
-
-        </div>
-
-
-        ${
-          item.note
-
-            ? `
-              <div class="item-note">
-
-                📝
-                ${escapeHtml(
-                  item.note
-                )}
-
-              </div>
-            `
-
-            : ""
-        }
 
       </div>
 
 
-      <div class="item-side">
+      <!-- QUANTITÀ -->
 
-        <div class="item-operator">
+      <div class="inspection-value">
 
-          👷
+        <span>Q.TÀ</span>
 
-          ${escapeHtml(
-            operatorName
-          )}
+        <strong>
+          ${
+            item.quantity !== null &&
+            item.quantity !== undefined
+              ? escapeHtml(item.quantity)
+              : "-"
+          }
+        </strong>
 
-        </div>
+      </div>
 
 
-        <div class="item-status">
+      <!-- COLLI -->
 
-          ${escapeHtml(
-            formatStatus(
-              item.status
-            )
-          )}
+      <div class="inspection-value">
 
-        </div>
+        <span>COLLI</span>
 
+        <strong>
+          ${
+            item.number_of_boxes !== null &&
+            item.number_of_boxes !== undefined
+              ? escapeHtml(item.number_of_boxes)
+              : "-"
+          }
+        </strong>
+
+      </div>
+
+
+      <!-- PEZZI PER BOX -->
+
+      <div class="inspection-value">
+
+        <span>PZ/BOX</span>
+
+        <strong>
+          ${
+            item.pieces_per_box !== null &&
+            item.pieces_per_box !== undefined
+              ? escapeHtml(item.pieces_per_box)
+              : "-"
+          }
+        </strong>
+
+      </div>
+
+
+      <!-- OPERATORE -->
+
+      <div class="inspection-operator">
+
+        <span>OPERATORE</span>
+
+        <strong>
+          ${escapeHtml(operatorName)}
+        </strong>
+
+      </div>
+
+
+      <!-- AZIONE -->
+
+      <div class="inspection-action">
 
         ${
-          item.status !== "COMPLETED"
-
+          isCompleted
             ? `
+              <div class="inspection-check completed">
+                ✓
+              </div>
+
+              <span class="inspection-status completed">
+                OK
+              </span>
+            `
+            : `
               <button
-                class="item-complete-btn"
-                onclick="completeItem(
-                  ${item.id}
-                )"
+                class="inspection-check"
+                onclick="completeItem(${item.id})"
+                title="Completa articolo"
               >
                 ✓
               </button>
-            `
 
-            : `
-              <div class="item-completed-icon">
-                ✓
-              </div>
+              <span class="inspection-status pending">
+                DA FARE
+              </span>
             `
         }
 
@@ -804,23 +754,43 @@ async function completeItem(itemId) {
 
   try {
 
-    /*
-     * Per ora utilizziamo l'endpoint task status
-     * solo quando sarà disponibile la gestione
-     * specifica degli articoli.
-     *
-     * Questa funzione viene preparata ora.
-     */
+    const response = await fetch(
+      `/api/task-items/${itemId}/status`,
+      {
+        method: "PATCH",
 
-    console.log(
-      "Completamento articolo:",
-      itemId
+        headers: {
+          "Content-Type": "application/json"
+        },
+
+        body: JSON.stringify({
+          status: "COMPLETED"
+        })
+      }
     );
 
 
-    alert(
-      "La gestione del completamento del singolo articolo verrà collegata al backend nel prossimo passaggio."
-    );
+    const result = await response.json();
+
+
+    if (!response.ok) {
+
+      throw new Error(
+        result.error ||
+        "Errore completamento articolo"
+      );
+
+    }
+
+
+    // Ricarica le task per aggiornare:
+    // - stato articolo
+    // - progresso
+    // - barra percentuale
+    // - eventuale completamento della task
+
+    await loadTasks();
+
 
   } catch (error) {
 
@@ -828,7 +798,13 @@ async function completeItem(itemId) {
       "Errore completamento articolo:",
       error
     );
+
+    alert(
+      "Impossibile completare l'articolo."
+    );
+
   }
+
 }
 
 // ============================================================
@@ -837,16 +813,47 @@ async function completeItem(itemId) {
 
 async function reportProblem(taskId) {
 
+  const problemType =
+    prompt(
+      "Tipo di problema:\n\n" +
+      "1 = Articolo mancante\n" +
+      "2 = Quantità errata\n" +
+      "3 = Prodotto danneggiato\n" +
+      "4 = Problema operativo\n" +
+      "5 = Altro"
+    );
+
+  if (!problemType) {
+    return;
+  }
+
+  const problemTypes = {
+    "1": "ITEM_MISSING",
+    "2": "WRONG_QUANTITY",
+    "3": "DAMAGED_PRODUCT",
+    "4": "OPERATIONAL_PROBLEM",
+    "5": "OTHER"
+  };
+
+  const selectedType =
+    problemTypes[problemType.trim()];
+
+  if (!selectedType) {
+    alert(
+      "Tipo di problema non valido. " +
+      "Inserisci un numero da 1 a 5."
+    );
+    return;
+  }
+
   const description =
     prompt(
       "Descrivi il problema:"
     );
 
-
   if (!description) {
     return;
   }
-
 
   try {
 
@@ -861,21 +868,27 @@ async function reportProblem(taskId) {
         },
 
         body: JSON.stringify({
-          problem_description:
-            description
+          problem_type: selectedType,
+          problem_description: description
         })
       }
     );
 
+    const result =
+      await response.json();
 
     if (!response.ok) {
       throw new Error(
+        result.error ||
         "Errore segnalazione problema"
       );
     }
 
-
     await loadTasks();
+
+    alert(
+      "Problema segnalato correttamente."
+    );
 
   } catch (error) {
 
@@ -960,7 +973,10 @@ function connectWebSocket() {
             "TASK_PROBLEM_TAKEN" ||
 
           message.type ===
-            "TASK_PROBLEM_RESOLVED"
+            "TASK_PROBLEM_RESOLVED" ||
+          
+          message.type ===
+            "TASK_ITEM_UPDATED"
         ) {
 
           loadTasks();
